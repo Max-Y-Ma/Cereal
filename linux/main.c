@@ -16,15 +16,19 @@ int main() {
     cereal_register_callback(hcereal1, (cereal_callback)myhandler);
 
     /* Connect to serial device */
-    cereal_connect(hcereal1);
+    if (cereal_connect(hcereal1) != 0) {
+        fprintf(stderr, "ERROR: Unable to connect to device\n");
+        exit(EXIT_FAILURE);
+    }
 
     /* Run test */
-    cereal_transmit(hcereal1, "Hello!", strlen("Hello!"));
+    cereal_transmit(hcereal1, (uint8_t*)"Hello!", strlen("Hello!"));
 
     uint8_t buffer[RX_BUFFER_LENGTH];
     cereal_receive(hcereal1, buffer, RX_BUFFER_LENGTH);
 
-    if (strcmp(buffer, "ACK") != 0) {
+    if (strcmp((char*)buffer, "ACK") != 0) {
+        fprintf(stderr, "ERROR: No device response\n");
         return -1;
     }
 
@@ -34,4 +38,5 @@ int main() {
 static void myhandler(uint8_t* buf)
 {
     /* Process data in buffer */
+    printf("%s", (char*)buf);
 }

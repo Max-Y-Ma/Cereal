@@ -29,7 +29,11 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 
 # Clean rule
 clean:
-	rm -rf $(BUILD_DIR) $(TARGET)
+	@rm -rf $(BUILD_DIR) $(TARGET)
+
+# Run rule
+run:
+	@$(BUILD_DIR)/$(TARGET)
 
 # PHONY targets to avoid conflicts with file names
-.PHONY: all clean
+.PHONY: all clean run
