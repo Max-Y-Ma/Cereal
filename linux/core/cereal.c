@@ -9,9 +9,6 @@ void cereal_init(cereal_handle_t hcereal)
 
     /* Initialize handler to default values */
     hcereal->fd = 0;
-    memset(hcereal->rx_buf, 0, RX_BUFFER_LENGTH);
-    memset(hcereal->tx_buf, 0, TX_BUFFER_LENGTH);
-    hcereal->has_callback = false;
     hcereal->cb = NULL;
 }
 
@@ -134,8 +131,6 @@ int32_t cereal_transmit(cereal_handle_t hcereal, uint8_t* tx_buf, uint32_t nbyte
     ssize_t bytes_written = write(hcereal->fd, tx_buf, nbytes);
     bytes_written += write(hcereal->fd, '\0', 1);
 
-    memcpy(hcereal->tx_buf, tx_buf, nbytes);
-
     return bytes_written;
 }
 
@@ -154,12 +149,11 @@ int32_t cereal_receive(cereal_handle_t hcereal, uint8_t* rx_buf, uint32_t nbytes
 
     /* Read bytes from device */
     memset(rx_buf, '\0', nbytes);
-    ssize_t bytes_read = read(hcereal->fd, rx_buf, nbytes);
-    memcpy(hcereal->rx_buf, rx_buf, nbytes);
+    ssize_t bytes_read = read(hcereal->fd, rx_buf, nbytes - 1);
 
     /* Execute registered callback */
     if (hcereal->cb != NULL) {
-        hcereal->cb(hcereal->rx_buf);
+        hcereal->cb(rx_buf);
     }
 
     return bytes_read;

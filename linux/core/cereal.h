@@ -23,9 +23,6 @@
 typedef void (*cereal_callback)(uint8_t* buf);
 typedef struct cereal_t{
     int32_t fd;
-    uint8_t rx_buf[RX_BUFFER_LENGTH];
-    uint8_t tx_buf[TX_BUFFER_LENGTH];
-    uint8_t has_callback;
     cereal_callback cb;
 } cereal_t;
 typedef cereal_t* cereal_handle_t;
