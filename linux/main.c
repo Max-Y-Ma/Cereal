@@ -22,15 +22,12 @@ int main() {
     }
 
     /* Run test */
-    cereal_transmit(hcereal1, (uint8_t*)"Hello!", strlen("Hello!"));
-
     uint8_t buffer[RX_BUFFER_LENGTH];
-    cereal_receive(hcereal1, buffer, RX_BUFFER_LENGTH);
-
-    if (strcmp((char*)buffer, "ACK") != 0) {
-        fprintf(stderr, "ERROR: No device response\n");
-        return -1;
+    while(1) {
+        cereal_receive(hcereal1, buffer, 32);
     }
+
+    cereal_halt(hcereal1);
 
     return 0;
 }
