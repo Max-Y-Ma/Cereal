@@ -5,6 +5,7 @@
 #include "signal.h"
 
 /* Library Includes */
+#include "windows.h"
 #include "core/cereal.h"
 
 /* User callback */
@@ -12,23 +13,22 @@ static void myhandler(uint8_t* buf);
 
 cereal_handle_t hcereal1;
 
-/* Signal handler function */
-void sigterm_handler(int signum) {
-    /* Close device */
-    if (hcereal1->fd != 0) {
-        cereal_halt(hcereal1);
+BOOL SigHandler(DWORD fdwCtrlType) {
+    switch (fdwCtrlType) {
+        case CTRL_C_EVENT:
+            printf("Ctrl+C received. Cleaning up and exiting...\n");
+            cereal_halt(hcereal1);
+            exit(EXIT_FAILURE);
+        default:
+            return FALSE;
     }
-
-    /* Exit program */
-    printf("Received SIGINT signal %d. Cleaning up...\n", signum);
-    exit(EXIT_FAILURE);
 }
 
 int main() {
-    /* Register the signal handler */
-    if (signal(SIGINT, sigterm_handler) == SIG_ERR) {
-        perror("Error registering signal handler");
-        return EXIT_FAILURE;
+    /* Setup signal handler */
+    if (SetConsoleCtrlHandler((PHANDLER_ROUTINE)SigHandler, TRUE) == FALSE) {
+        fprintf(stderr, "ERROR: Unable to install handler\n");
+        exit(EXIT_FAILURE);
     }
 
     /* Instantiate and initialize handler */
@@ -45,7 +45,7 @@ int main() {
     /* Run test */
     uint8_t buffer[RX_BUFFER_LENGTH];
     while(1) {
-        cereal_receive(hcereal1, buffer, 32);
+        cereal_receive(hcereal1, buffer, 2);
         cereal_transmit(hcereal1, (uint8_t*)"AT!", strlen("AT!"));
     }
 

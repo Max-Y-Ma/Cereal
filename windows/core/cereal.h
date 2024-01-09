@@ -7,6 +7,9 @@
 #include "stdbool.h"
 #include "string.h"
 
+#include "windows.h"
+#include "wbemidl.h"
+
 #define TX_BUFFER_LENGTH        1024
 #define RX_BUFFER_LENGTH        1024
 
@@ -15,7 +18,7 @@
 /* Data Structures */
 typedef void (*cereal_callback)(uint8_t* buf);
 typedef struct cereal_t{
-    int32_t fd;
+    HANDLE fd;
     cereal_callback cb;
 } cereal_t;
 typedef cereal_t* cereal_handle_t;

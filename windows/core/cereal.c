@@ -8,7 +8,7 @@ void cereal_init(cereal_handle_t hcereal)
     }
 
     /* Initialize handler to default values */
-    hcereal->fd = 0;
+    hcereal->fd = NULL;
     hcereal->cb = NULL;
 }
 
@@ -16,7 +16,7 @@ void cereal_halt(cereal_handle_t hcereal)
 {
     /* Close device */
     if (hcereal->fd != 0) {
-        close(hcereal->fd);
+        CloseHandle(hcereal->fd);
     }
 }
 
@@ -28,27 +28,19 @@ void cereal_halt(cereal_handle_t hcereal)
 static int scan_devices()
 {
     /* Scan for serial devices */
-    DIR *dir;
-    struct dirent *entry;
-
-    /* Open the /dev directory */
     int num_devices = 0;
-    if ((dir = opendir("/dev")) != NULL) {
-        /* Iterate through the directory entries */
-        while ((entry = readdir(dir)) != NULL) {
-            // Check if the entry starts with "ttyS" or "ttyUSB" (typical serial device prefixes)
-            if (strncmp(entry->d_name, "ttyACM", 6) == 0 || strncmp(entry->d_name, "ttyUSB", 6) == 0) {
-                printf("Serial device found: /dev/%s\n", entry->d_name);
-                num_devices++;
-            }
-        }
+    for (int i = 1; i <= 256; i++) {
+        char portName[10];
+        snprintf(portName, sizeof(portName), "COM%d", i);
 
-        /* Close the directory */
-        closedir(dir);
-    } else {
-        /* Unable to open directory */
-        perror("Error opening /dev directory");
-        return -1;
+        HANDLE hSerial = CreateFile(portName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+
+        if (hSerial != INVALID_HANDLE_VALUE) {
+            // The port is available
+            printf("Found COM port: %s\n", portName);
+            CloseHandle(hSerial);
+            num_devices++;
+        }
     }
 
     return num_devices;
@@ -68,12 +60,14 @@ static int32_t check_device(char* device_name)
         return -1;
     }
 
-    /* Check if the file or device node exists */
-    if (access(device_name, F_OK) != -1) {
-        return 0;  /* File exists */
-    } else {
-        return -1;  /* File does not exist */
+    HANDLE hSerial = CreateFile(device_name, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (hSerial == INVALID_HANDLE_VALUE) {
+        return -1; /* Port is not available */
     }
+
+    /* The port is available */
+    CloseHandle(hSerial);
+    return 0;
 }
 
 int32_t cereal_connect(cereal_handle_t hcereal)
@@ -96,26 +90,52 @@ int32_t cereal_connect(cereal_handle_t hcereal)
     }
 
     /* Open device */
-    hcereal->fd = open(user_device_name, O_RDWR | O_NOCTTY | O_SYNC);
-    if (hcereal->fd == -1) {
-        return 1;
+    HANDLE hSerial;
+    DCB dcbSerialParams = { 0 };
+    COMMTIMEOUTS timeouts = { 0 };
+
+    /* Open COM port */
+    hSerial = CreateFile(user_device_name, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+
+    if (hSerial == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "Error opening COM port\n");
+        return -1;
     }
 
-    /* Configure the serial port */
-    struct termios serialConfig;
-    tcgetattr(hcereal->fd, &serialConfig);
+    /* Configure COM port settings */
+    dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
+    if (!GetCommState(hSerial, &dcbSerialParams)) {
+        fprintf(stderr, "Error getting COM state\n");
+        CloseHandle(hSerial);
+        return -1;
+    }
 
-    /* Set baud rate and other serial settings (customize as needed) */
-    cfsetispeed(&serialConfig, B115200);
-    cfsetospeed(&serialConfig, B115200);
-    serialConfig.c_cflag &= ~PARENB;  /* No parity */
-    serialConfig.c_cflag &= ~CSTOPB;  /* 1 stop bit */
-    serialConfig.c_cflag &= ~CSIZE;
-    serialConfig.c_cflag |= CS8;  /* 8 data bits */
-    serialConfig.c_cflag |= CREAD;  /* Enable receiver */
-    serialConfig.c_cflag |= CLOCAL;  /* Ignore modem control lines */
+    dcbSerialParams.BaudRate = CBR_115200;  // Set your desired baud rate
+    dcbSerialParams.ByteSize = 8;         // 8 data bits
+    dcbSerialParams.Parity = NOPARITY;    // No parity
+    dcbSerialParams.StopBits = ONESTOPBIT; // 1 stop bit
 
-    tcsetattr(hcereal->fd, TCSANOW, &serialConfig);
+    if (!SetCommState(hSerial, &dcbSerialParams)) {
+        fprintf(stderr, "Error setting COM state\n");
+        CloseHandle(hSerial);
+        return -1;
+    }
+
+    /* Set timeouts */
+    timeouts.ReadIntervalTimeout = 50;
+    timeouts.ReadTotalTimeoutConstant = 50;
+    timeouts.ReadTotalTimeoutMultiplier = 10;
+    timeouts.WriteTotalTimeoutConstant = 50;
+    timeouts.WriteTotalTimeoutMultiplier = 10;
+
+    if (!SetCommTimeouts(hSerial, &timeouts)) {
+        fprintf(stderr, "Error setting timeouts\n");
+        CloseHandle(hSerial);
+        return -1;
+    }
+
+    /* Save handle */
+    hcereal->fd = hSerial;
 
     return 0;
 }
@@ -127,10 +147,13 @@ int32_t cereal_transmit(cereal_handle_t hcereal, uint8_t* tx_buf, uint32_t nbyte
         return -1;
     }
 
-    /* Write contents of buffer to device */
-    ssize_t bytes_written = write(hcereal->fd, tx_buf, nbytes);
-    bytes_written += write(hcereal->fd, '\0', 1);
+    DWORD bytes_written;
+    if (!WriteFile(hcereal->fd, tx_buf, nbytes, &bytes_written, NULL)) {
+        fprintf(stderr, "Error writing to COM port\n");
+        return -1;
+    }
 
+    /* Write contents of buffer to device */
     return bytes_written;
 }
 
@@ -141,22 +164,26 @@ int32_t cereal_receive(cereal_handle_t hcereal, uint8_t* rx_buf, uint32_t nbytes
         return -1;
     }
 
-    /* Wait for available bytes */
-    int bytes_available;
+    /* Check bytes are available */
+    COMSTAT status;
+    DWORD errors;
     do {
-        ioctl(hcereal->fd, FIONREAD, &bytes_available);
-    } while(bytes_available <= 0);
+        ClearCommError(hcereal->fd, &errors, &status);
+    } while(status.cbInQue <= 0);
 
-    /* Read bytes from device */
+    /* Read available bytes from device */
+    DWORD bytesRead;
     memset(rx_buf, '\0', nbytes);
-    ssize_t bytes_read = read(hcereal->fd, rx_buf, nbytes - 1);
-
-    /* Execute registered callback */
-    if (hcereal->cb != NULL) {
-        hcereal->cb(rx_buf);
+    if (ReadFile(hcereal->fd, rx_buf, nbytes - 1, &bytesRead, NULL)) {
+        if (hcereal->cb != NULL) {
+            hcereal->cb(rx_buf);
+        }
+    } else {
+        fprintf(stderr, "Error reading from COM port\n");
+        return -1;
     }
 
-    return bytes_read;
+    return bytesRead;
 }
 
 void cereal_register_callback(cereal_handle_t hcereal, cereal_callback cb)

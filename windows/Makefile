@@ -29,7 +29,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 
 # Clean rule
 clean:
-	@rmdir $(BUILD_DIR)
+	@rmdir /s /q $(BUILD_DIR)
 
 # Run rule
 run:
